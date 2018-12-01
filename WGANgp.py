@@ -5,10 +5,11 @@ import datetime
 import os
 import random
 from glob import glob
+import pickle
 
 import numpy as np
 import pandas as pd
-from keras.models import Model
+from keras.models import Model, load_model
 from keras.layers import Input
 from keras import optimizers
 import keras.backend as K
@@ -22,10 +23,20 @@ class WGANgp():
     def __init__(self, config):
         self.config = config
 
-    def build_model(self):
-        self.discriminator = net_utils.discriminator(self.config.IMAGE_SHAPE, base_name="discriminator")
-        self.generator = net_utils.generator(self.config.LATENT_DIM, self.config.IMAGE_SHAPE,
+    def build_model(self, discriminator_path=None, generator_path=None):
+
+        if discriminator_path:
+            self.discriminator = load_model(discriminator_path)
+        else:
+            self.discriminator = net_utils.discriminator(self.config.IMAGE_SHAPE, base_name="discriminator",
+                                                     use_res=self.config.USE_RES)
+        if generator_path:
+            self.generator = load_model(generator_path)
+        else:
+            self.generator = net_utils.generator_3(self.config.LATENT_DIM, self.config.IMAGE_SHAPE,
                                              self.config.NUMBER_RESIDUAL_BLOCKS, base_name="generator")
+            #self.generator = net_utils.generator(self.config.LATENT_DIM, self.config.IMAGE_SHAPE,
+            #                                 self.config.NUMBER_RESIDUAL_BLOCKS, base_name="generator")
 
         D_real_input = Input(shape=self.config.IMAGE_SHAPE)
         noise_vector = Input(shape=(self.config.LATENT_DIM, ))
@@ -44,26 +55,34 @@ class WGANgp():
 
         loss_d = loss_fake - loss_real + self.config.LAMBDA * grad_penalty
 
-        optimizer = optimizers.Adam(lr=self.config.LEARNING_RATE,
+        self.optimizer_d = optimizers.Adam(lr=self.config.D_LEARNING_RATE,
                                     beta_1=self.config.BETA_1,
                                     beta_2=self.config.BETA_2)
 
-        D_training_updates = optimizer.get_updates(self.discriminator.trainable_weights,[],loss_d)
+        D_training_updates = self.optimizer_d.get_updates(self.discriminator.trainable_weights,[],loss_d)
 
         self.D_train = K.function([D_real_input, noise_vector, epsilon],
                                   [loss_real, loss_fake],
                                   D_training_updates)
 
+        self.optimizer_g = optimizers.Adam(lr=self.config.G_LEARNING_RATE,
+                                    beta_1=self.config.BETA_1,
+                                    beta_2=self.config.BETA_2)
         loss_g = - loss_fake
-        G_training_updates = optimizer.get_updates(self.generator.trainable_weights,[],loss_g)
+        G_training_updates = self.optimizer_g.get_updates(self.generator.trainable_weights,[],loss_g)
         self.G_train = K.function([noise_vector], [loss_g], G_training_updates)
 
     def train(self):
         self.build_model()
+        print(self.generator.layers)
+        print(self.discriminator.layers)
         self.train_iterations()
 
-    def resume_train(self):
-        pass
+    def resume_train(self, discriminator_path, generator_path, counter):
+        self.build_model(discriminator_path, generator_path)
+        print(self.generator.layers)
+        print(self.discriminator.layers)
+        self.train_iterations(counter)
 
     def train_iterations(self, counter=0):
 
@@ -81,7 +100,7 @@ class WGANgp():
 
         dataset = utils.data_generator(train_file_list, self.config.BATCH_SIZE)
 
-        experiment_dir = os.path.join(self.config.RESULT_DIR, datetime_sequence)
+        experiment_dir = os.path.join(self.config.RESULT_DIR, datetime_sequence + "_" + self.config.COMMENT)
 
         sample_output_dir = os.path.join(experiment_dir, "sample", self.config.DATASET)
         weights_output_dir = os.path.join(experiment_dir, "weights", self.config.DATASET)
@@ -166,9 +185,9 @@ class WGANgp():
                     file = "{0}_{1}.jpg".format(epoch, counter)
                     utils.output_sample_image(os.path.join(sample_output_dir, file), sample_array)
 
-                if counter % 1000 == 0:
-                    net_utils.save_weights(self.generator, weights_output_dir, counter)
-                    net_utils.save_weights(self.discriminator, weights_output_dir, counter)
+                if counter % 5000 == 0:
+                    self.generator.save(os.path.join(weights_output_dir, "generator" + str(counter) + ".hdf5"))
+                    self.discriminator.save(os.path.join(weights_output_dir, "discriminator" + str(counter) + ".hdf5"))
                     met_curve.to_csv(os.path.join(experiment_dir,
                                                   self.config.DATASET+".csv"), index=False)
 
@@ -184,14 +203,37 @@ class WGANgp():
         file = "{0}_{1}.jpg".format(self.config.EPOCH, counter)
         utils.output_sample_image(os.path.join(sample_output_dir, file), sample_array)
 
-        net_utils.save_weights(self.generator, weights_output_dir, counter)
-        net_utils.save_weights(self.discriminaror, weights_output_dir, counter)
+        self.generator.save(os.path.join(weights_output_dir, "generator" + str(counter) + ".hdf5"))
+        self.discriminator.save(os.path.join(weights_output_dir, "discriminator" + str(counter) + ".hdf5"))
         met_curve.to_csv(os.path.join(experiment_dir,
                                       self.config.DATASET_A + "_"
                                       + self.config.DATASET_B + ".csv"),
                          index=False)
 
 
-    def generate(self):
-        pass
+    def generate(self,weights_path, number_images=100):
+        generator = net_utils.generator(self.config.LATENT_DIM, self.config.IMAGE_SHAPE,
+                                             self.config.NUMBER_RESIDUAL_BLOCKS, base_name="generator")
+
+        generator.load_weights(weights_path)
+
+        now = datetime.datetime.now()
+        datetime_sequence = "{0}{1:02d}{2:02d}_{3:02}{4:02d}".format(str(now.year)[-2:], now.month, now.day ,
+                                                                    now.hour, now.minute)
+
+        output_dir = os.path.join("generated", datetime_sequence)
+        os.makedirs(output_dir, exist_ok=True)
+
+        counter = 0
+
+        while counter < number_images:
+            noise = np.random.normal(size=(16, self.config.LATENT_DIM)).astype('float32')
+            generated_images = generator.predict(noise)
+            for i in range(16):
+                file = "{}.jpg".format(counter)
+                utils.output_sample_image(os.path.join(output_dir, file), generated_images[i, :, :, :])
+                counter += 1
+                if counter >= number_images:
+                    break
+
 

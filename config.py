@@ -9,7 +9,7 @@ class Config():
         # train 関連のパラメータです。
         #
         # 学習のエポック数。
-        self.EPOCH = 500
+        self.EPOCH = 2000
         # 1 エポックあたりの iteration 数。
         self.ITER_PER_EPOCH = 1000
         # 学習を途中から再開する時用のフラグです。
@@ -17,16 +17,17 @@ class Config():
         # result ディレクトリ下のどのディレクトリの結果から再開するか。
         self.RESUME_FROM = "180912_1031"
         # 何iteration学習した結果から再開するか。
-        self.COUNTER = 500000
+        self.COUNTER = 245000
         # critic 数。unrolled GAN や WGAN を使う時用に。
-        self.NUM_CRITICS = 5
+        self.NUM_CRITICS = 1
 
         self.LATENT_DIM = 128
 
         # ミニバッチサイズです。
-        self.BATCH_SIZE = 32
+        self.BATCH_SIZE = 8
         # 学習率です。
-        self.LEARNING_RATE = 0.0001
+        self.D_LEARNING_RATE = 0.0003
+        self.G_LEARNING_RATE = 0.0001
         # Adam optimizerのハイパーパラメータです。
         self.BETA_1 = 0.0
         self.BETA_2 = 0.9
@@ -35,7 +36,7 @@ class Config():
         # Discriminator に Residual Block を使用するフラグです。
         self.USE_RES = True
         # Residual Blockの数です。
-        self.NUMBER_RESIDUAL_BLOCKS = 9
+        self.NUMBER_RESIDUAL_BLOCKS = 3
 
         # 学習結果を出力するディレクトリです。
         self.RESULT_DIR = "./result/"
@@ -43,20 +44,19 @@ class Config():
         self.DATA_DIR = "./data/"
 
         # 学習時の入力画像サイズです。 (height, width, channel)
-        self.IMAGE_SHAPE = (128, 128, 3)
+        self.IMAGE_SHAPE = (256, 256, 3)
         # 訓練データのファイル拡張子です。
         # TODO: jpg、pngが混在していても使用できるようにする。
         self.DATA_EXT = "*.jpg"
 
         # 訓練データを格納しているディレクトリの名前です。
-        self.DATASET = "ramen"
-        #
-        # inference 関連のパラメータです
-        #
-        # 変換元のディレクトリパスです。
-        self.TARGET_DIR = "./data/cheese_cake"
+        self.DATASET = "ramen_cam"
+
+        # コメント。結果を格納するディレクトリの名前に使います。
+        self.COMMENT = "G3"
+
         # 使用するモデルのweightファイルのパスです。
-        self.MODEL_FILE_PATH = "./result/180918_0005/weights/cheese_cake2chocolate_cake/11000.hdf5"
+        self.MODEL_FILE_PATH = "./result/180930_0108/weights/ramen/200000.hdf5"
 
 
     def output_config(self, path):
@@ -70,7 +70,8 @@ class Config():
         output_str_list.append("Iteration per Epoch:{}".format(self.ITER_PER_EPOCH))
         output_str_list.append("Number of Critics:{}".format(self.NUM_CRITICS))
         output_str_list.append("MiniBatch Size:{}".format(self.BATCH_SIZE))
-        output_str_list.append("Learning Rate:{}".format(self.LEARNING_RATE))
+        output_str_list.append("Discriminator's Learning Rate:{}".format(self.D_LEARNING_RATE))
+        output_str_list.append("Generator's Learning Rate:{}".format(self.G_LEARNING_RATE))
         output_str_list.append("Beta 1:{}".format(self.BETA_1))
         output_str_list.append("Beta 2:{}".format(self.BETA_2))
         output_str_list.append("Lambda for gradient penalty:{}".format(self.LAMBDA))
@@ -80,6 +81,7 @@ class Config():
         output_str_list.append("Input Shape:({},{},{})".format(self.IMAGE_SHAPE[0],self.IMAGE_SHAPE[1],self.IMAGE_SHAPE[2]))
         output_str_list.append("Data Extent:{}".format(self.DATA_EXT))
         output_str_list.append("DataSet:{}".format(self.DATASET))
+        output_str_list.append("Comment:{}".format(self.COMMENT))
 
         with open(path, mode="w") as f:
             config_txt = "\n".join(output_str_list)
